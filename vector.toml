@@ -1,0 +1,18 @@
+[sources.docker]
+type = "docker_logs"
+exclude_containers = ["axiom-log-shipper"]
+
+[transforms.enrich]
+type = "remap"
+inputs = ["docker"]
+source = '''
+.host = "${HOSTNAME}"
+.service = .container_name
+.source = "docker"
+'''
+
+[sinks.axiom]
+type = "axiom"
+inputs = ["enrich"]
+token = "${AXIOM_TOKEN}"
+dataset = "${AXIOM_DATASET}"

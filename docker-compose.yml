@@ -1,0 +1,29 @@
+services:
+  axiom-log-shipper:
+    image: timberio/vector:0.36.0-alpine
+    container_name: axiom-log-shipper
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./vector.toml:/etc/vector/vector.toml:ro
+    command: ["--config", "/etc/vector/vector.toml"]
+
+  axiom-health-watcher:
+    image: docker:cli
+    container_name: axiom-health-watcher
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./health-watcher.sh:/health-watcher.sh:ro
+    command: sh /health-watcher.sh
+
+  axiom-to-telegram-bot:
+    build: .
+    container_name: axiom-to-telegram-bot
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8092:8080"
+    profiles: ["alertbot"]
