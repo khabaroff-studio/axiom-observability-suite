@@ -40,7 +40,7 @@ services:
       - "127.0.0.1:8092:8080"
     profiles: ["alertbot"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://localhost:8080/health || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=5)\""]
       interval: 30s
       timeout: 5s
       retries: 3
