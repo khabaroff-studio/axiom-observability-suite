@@ -31,6 +31,7 @@ def get_token() -> str:
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────
 
+
 def api(method: str, path: str, payload: Any = None) -> Any:
     token = get_token()
     req = urllib.request.Request(
@@ -58,6 +59,7 @@ def api(method: str, path: str, payload: Any = None) -> Any:
 
 # ── Notifiers ─────────────────────────────────────────────────────────────────
 
+
 def list_notifiers():
     items = api("GET", "/v2/notifiers") or []
     for n in items:
@@ -66,10 +68,14 @@ def list_notifiers():
 
 
 def create_notifier(name: str, webhook_url: str) -> str:
-    result = api("POST", "/v2/notifiers", {
-        "name": name,
-        "properties": {"webhook": {"url": webhook_url}},
-    })
+    result = api(
+        "POST",
+        "/v2/notifiers",
+        {
+            "name": name,
+            "properties": {"webhook": {"url": webhook_url}},
+        },
+    )
     print(f"Created notifier: {result['id']}  {result['name']}")
     return result["id"]
 
@@ -81,13 +87,16 @@ def delete_notifier(notifier_id: str):
 
 # ── Monitors ──────────────────────────────────────────────────────────────────
 
+
 def list_monitors():
     items = api("GET", "/v2/monitors") or []
     for m in items:
         status = "disabled" if m.get("disabled") else "active"
         print(f"  {m['id']}  [{status}]  {m['name']}")
-        print(f"           every {m.get('intervalMinutes')}m, "
-              f"threshold {m.get('comparison')} {m.get('threshold')}")
+        print(
+            f"           every {m.get('intervalMinutes')}m, "
+            f"threshold {m.get('comparison')} {m.get('threshold')}"
+        )
 
 
 def create_monitor(
@@ -101,27 +110,31 @@ def create_monitor(
     """Создать Threshold-монитор для Docker-сервиса по ошибкам."""
     apl = (
         f"['{DATASET}']"
-        f" | where service == \"{service}\""
-        f" | where message contains \"ERROR\""
-        f"   or message contains \"error\""
-        f"   or message contains \"Traceback\""
-        f"   or message contains \"Exception\""
+        f' | where service == "{service}"'
+        f' | where message contains "ERROR"'
+        f'   or message contains "error"'
+        f'   or message contains "Traceback"'
+        f'   or message contains "Exception"'
         f" | count"
     )
-    result = api("POST", "/v2/monitors", {
-        "name": name,
-        "description": description,
-        "type": "Threshold",
-        "aplQuery": apl,
-        "intervalMinutes": interval_minutes,
-        "rangeMinutes": interval_minutes,
-        "threshold": threshold,
-        "operator": "AboveOrEqual",
-        "alertOnNoData": False,
-        "notifiers": [notifier_id],
-        "notifyByGroup": False,
-        "disabledUntil": "0001-01-01T00:00:00Z",
-    })
+    result = api(
+        "POST",
+        "/v2/monitors",
+        {
+            "name": name,
+            "description": description,
+            "type": "Threshold",
+            "aplQuery": apl,
+            "intervalMinutes": interval_minutes,
+            "rangeMinutes": interval_minutes,
+            "threshold": threshold,
+            "operator": "AboveOrEqual",
+            "alertOnNoData": False,
+            "notifiers": [notifier_id],
+            "notifyByGroup": False,
+            "disabledUntil": "0001-01-01T00:00:00Z",
+        },
+    )
     print(f"Created monitor: {result['id']}  {result['name']}")
     return result["id"]
 
@@ -129,24 +142,28 @@ def create_monitor(
 def create_health_watcher_monitor(notifier_id: str, interval_minutes: int = 5) -> str:
     """Создать монитор для health-watcher: алерт если любой контейнер нездоров."""
     apl = f"['{DATASET}'] | where service == \"axiom-health-watcher\" | count"
-    result = api("POST", "/v2/monitors", {
-        "name": "health-watcher — unhealthy containers",
-        "description": (
-            "Алерт если какой-либо Docker-контейнер остаётся unhealthy "
-            f"дольше UNHEALTHY_ALERT_DELAY_SECONDS секунд. "
-            f"Окно проверки {interval_minutes} мин."
-        ),
-        "type": "Threshold",
-        "aplQuery": apl,
-        "intervalMinutes": interval_minutes,
-        "rangeMinutes": interval_minutes,
-        "threshold": 1,
-        "operator": "AboveOrEqual",
-        "alertOnNoData": False,
-        "notifiers": [notifier_id],
-        "notifyByGroup": False,
-        "disabledUntil": "0001-01-01T00:00:00Z",
-    })
+    result = api(
+        "POST",
+        "/v2/monitors",
+        {
+            "name": "health-watcher — unhealthy containers",
+            "description": (
+                "Алерт если какой-либо Docker-контейнер остаётся unhealthy "
+                f"дольше UNHEALTHY_ALERT_DELAY_SECONDS секунд. "
+                f"Окно проверки {interval_minutes} мин."
+            ),
+            "type": "Threshold",
+            "aplQuery": apl,
+            "intervalMinutes": interval_minutes,
+            "rangeMinutes": interval_minutes,
+            "threshold": 1,
+            "operator": "AboveOrEqual",
+            "alertOnNoData": False,
+            "notifiers": [notifier_id],
+            "notifyByGroup": False,
+            "disabledUntil": "0001-01-01T00:00:00Z",
+        },
+    )
     print(f"Created monitor: {result['id']}  {result['name']}")
     return result["id"]
 
@@ -218,7 +235,10 @@ def main():
             notifiers = api("GET", "/v2/notifiers") or []
             if not notifiers:
                 print("No notifiers found. Create one first:", file=sys.stderr)
-                print("  axiom_cli.py notifiers create alertbot-telegram <url>", file=sys.stderr)
+                print(
+                    "  axiom_cli.py notifiers create alertbot-telegram <url>",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
             notifier_id = notifiers[0]["id"]
             notifier_name = notifiers[0]["name"]
@@ -248,7 +268,10 @@ def main():
             notifiers = api("GET", "/v2/notifiers") or []
             if not notifiers:
                 print("No notifiers found. Create one first:", file=sys.stderr)
-                print("  axiom_cli.py notifiers create alertbot-telegram <url>", file=sys.stderr)
+                print(
+                    "  axiom_cli.py notifiers create alertbot-telegram <url>",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
             notifier_id = notifiers[0]["id"]
             print(f"Using notifier: {notifier_id}  {notifiers[0]['name']}")

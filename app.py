@@ -19,6 +19,7 @@ logger = logging.getLogger("alertbot")
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
+
 class Settings(BaseSettings):
     telegram_bot_token: str
     telegram_chat_id: str = ""
@@ -34,6 +35,7 @@ TELEGRAM_API = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
 
 
 # ── Telegram sender ───────────────────────────────────────────────────────────
+
 
 async def send_message(
     text: str,
@@ -61,7 +63,9 @@ async def send_message(
 
     async with httpx.AsyncClient() as client:
         try:
-            r = await client.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
+            r = await client.post(
+                f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10
+            )
             if not r.is_success:
                 logger.error(f"Telegram API error {r.status_code}: {r.text}")
         except Exception as e:
@@ -69,6 +73,7 @@ async def send_message(
 
 
 # ── Formatters ────────────────────────────────────────────────────────────────
+
 
 def _fmt_dt(iso: str) -> str:
     try:
@@ -126,6 +131,7 @@ def format_axiom_alert(payload: dict) -> str:
 
 # ── Setup mode: polling to discover chat_id / thread_id ──────────────────────
 
+
 async def _setup_polling() -> None:
     logger.info("SETUP MODE active — send any message in the target group/topic")
     offset = 0
@@ -174,13 +180,16 @@ async def _setup_polling() -> None:
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.setup_mode:
         asyncio.create_task(_setup_polling())
     else:
         if not settings.telegram_chat_id:
-            logger.warning("TELEGRAM_CHAT_ID not set — set SETUP_MODE=true to discover it")
+            logger.warning(
+                "TELEGRAM_CHAT_ID not set — set SETUP_MODE=true to discover it"
+            )
     yield
 
 
@@ -203,7 +212,9 @@ async def axiom_webhook(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    logger.info(f"Axiom alert: {payload.get('name')!r} — {payload.get('matchedCount')} events")
+    logger.info(
+        f"Axiom alert: {payload.get('name')!r} — {payload.get('matchedCount')} events"
+    )
 
     await send_message(format_axiom_alert(payload))
     return {"ok": True}
