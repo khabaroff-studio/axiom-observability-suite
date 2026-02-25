@@ -13,15 +13,18 @@
                                                Axiom Monitor (при ошибках)
                                                               ↓
                                          axiom-to-telegram-bot → Telegram
+
+Docker healthcheck → health_status event → axiom-health-watcher → алерт
 ```
 
 **Автоматически** (ничего делать не нужно):
 - Все логи из stdout/stderr собираются и отправляются в Axiom
 - Каждый контейнер доступен в Axiom по полю `service` = имя контейнера
+- Если контейнер имеет healthcheck и остаётся `unhealthy` дольше ~2 минут — алерт в Telegram
 
 **Требует настройки:**
 - Алерт на ошибки — создаётся один раз DevOps через `axiom_cli.py monitors create <service>`
-- Алерт на недоступность — нужен `HEALTHCHECK` в `docker-compose.yml`
+- Healthcheck в `docker-compose.yml` — для алертов на недоступность (см. ниже)
 
 ---
 

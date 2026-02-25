@@ -34,6 +34,7 @@ docker compose --profile alertbot up -d
 - [docs/LOG-SHIPPER.md](docs/LOG-SHIPPER.md) — как устроен axiom-log-shipper, рекомендации по логированию в приложениях
 - [docs/MONITORING-MANAGEMENT.md](docs/MONITORING-MANAGEMENT.md) — APL-запросы, мониторы, CLI (`axiom_cli.py`), MCP
 - [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md) — настройка axiom-to-telegram-bot, Telegram, маршрутизация по топикам
+- [docs/SELF-MONITORING.md](docs/SELF-MONITORING.md) — как стек мониторит сам себя без петель
 
 ## Управление
 

@@ -1,15 +1,19 @@
-# axiom-to-telegram-bot: Axiom → Telegram
+# axiom-to-telegram-bot: единая точка алертов → Telegram
 
-Микросервис, который принимает вебхуки от Axiom и отправляет алерты в Telegram-группу.
+Микросервис, который принимает алерты из двух источников и отправляет в Telegram-группу.
 
 ## Архитектура
 
 ```
-Axiom Monitor → POST /webhook/axiom → axiom-to-telegram-bot → Telegram group/topic
+Axiom Monitor   → POST /webhook/axiom  ─┐
+                                         ├→  alertbot  → Telegram group/topic
+health-watcher  → POST /alert/local    ─┘
 ```
 
-Alertbot — единая точка для всех серверов. Аксиом агрегирует логи с нескольких серверов,
-axiom-to-telegram-bot принимает его вебхуки и маршрутизирует в нужные топики группы.
+- `/webhook/axiom` — внешний путь для Axiom Monitors (через reverse proxy)
+- `/alert/local` — внутренний путь для health-watcher (Docker-сеть, без auth)
+
+Подробнее о self-monitoring: [SELF-MONITORING.md](SELF-MONITORING.md).
 
 ## Расположение
 
@@ -54,10 +58,13 @@ WEBHOOK_SECRET=         # опционально: Axiom передаёт в за
 
 | Метод | Путь | Описание |
 |-------|------|----------|
-| GET | `/health` | healthcheck |
-| POST | `/webhook/axiom` | принимает вебхук от Axiom Monitor |
+| GET | `/health` | healthcheck (используется Docker healthcheck) |
+| POST | `/webhook/axiom` | вебхуки от Axiom Monitor (внешний, через reverse proxy) |
+| POST | `/alert/local` | алерты от health-watcher (внутренний, Docker-сеть) |
 
 Публичный URL (через reverse proxy): `https://your-server.example.com/alertbot/webhook/axiom`
+
+`/alert/local` принимает `{"title": "...", "body": "..."}`, возвращает 502 если Telegram не ответил.
 
 ## Формат вебхука от Axiom
 
