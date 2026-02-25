@@ -1,12 +1,12 @@
 # axiom-to-telegram-bot: единая точка алертов → Telegram
 
-Микросервис, который принимает алерты из двух источников и отправляет в Telegram-группу.
+Микросервис, который принимает алерты из двух источников и маршрутизирует в Telegram-группу по топикам.
 
 ## Архитектура
 
 ```
 Axiom Monitor   → POST /webhook/axiom  ─┐
-                                         ├→  alertbot  → Telegram group/topic
+                                         ├→  alertbot  ──routes.yml──→  Telegram topics
 health-watcher  → POST /alert/local    ─┘
 ```
 
@@ -24,35 +24,46 @@ health-watcher  → POST /alert/local    ─┘
 ├── docker-compose.yml  # axiom-log-shipper + axiom-to-telegram-bot (profiles)
 ├── requirements.txt
 ├── vector.toml         # конфиг axiom-log-shipper
+├── routes.yml          # маршрутизация алертов по топикам (не в git)
+├── routes.yml.example  # шаблон для routes.yml
 ├── .env
-├── .env.example
-└── docs/
+└── .env.example
 ```
 
-## Конфигурация (.env)
+## Конфигурация
+
+### .env
 
 ```
 TELEGRAM_BOT_TOKEN=     # токен бота от @BotFather
-TELEGRAM_CHAT_ID=       # ID группы (отрицательное число, напр. -1003779402801)
-TELEGRAM_TOPIC_ID=      # ID топика (число из ссылки на сообщение в топике)
-SETUP_MODE=false        # true — режим настройки (см. ниже)
 WEBHOOK_SECRET=         # опционально: Axiom передаёт в заголовке X-Webhook-Secret
 ```
 
-### Как получить TELEGRAM_CHAT_ID и TELEGRAM_TOPIC_ID
+### routes.yml (маршрутизация по топикам)
 
-1. Создать бота через @BotFather, получить токен.
-2. Добавить бота в нужную группу.
-3. В `.env` выставить `SETUP_MODE=true`, запустить контейнер.
-4. Упомянуть бота (`@botname`) в нужном топике группы.
-5. Бот ответит сообщением с `TELEGRAM_CHAT_ID` и `TELEGRAM_TOPIC_ID`.
-6. Вписать значения в `.env`, выставить `SETUP_MODE=false`, перезапустить.
+```yaml
+groups:
+  my-group: -100XXXXXXXXXX       # Telegram supergroup ID (с префиксом -100)
 
-**Альтернативно:** взять topic_id из ссылки на любое сообщение в топике.
-Ссылка вида `https://t.me/c/3779402801/97/165` → topic_id = `97`.
+topics:
+  general: 1                      # General topic
+  project-a: 123                  # Topic для проекта A
 
-**Важно:** в группах с топиками (Forum) бот получает упоминания, но не все сообщения
-без права "читать все сообщения". Для setup mode достаточно упоминания.
+routes:
+  # Substring match по: service (имя контейнера), host (сервер), monitor (имя Axiom монитора).
+  # Первый совпавший route побеждает.
+  - match: { service: "my-service" }
+    group: my-group
+    topic: project-a
+
+default_group: my-group
+default_topic: general
+```
+
+**Как получить ID топика:** из ссылки на сообщение в топике.
+Ссылка вида `https://t.me/c/3779402801/97/165` → topic_id = `97`, chat_id = `-1003779402801`.
+
+**Без routes.yml бот не запустится** (fail fast).
 
 ## Эндпоинты
 
@@ -87,7 +98,7 @@ docker ps | grep axiom-to-telegram-bot
 # Логи
 docker logs axiom-to-telegram-bot --tail 30
 
-# Пересоздать контейнер (подхватывает новый .env)
+# Пересоздать контейнер (подхватывает новый routes.yml)
 docker compose -f /opt/axiom-observability-suite/docker-compose.yml --profile alertbot up -d
 
 # Пересобрать образ (после изменений app.py)
@@ -109,28 +120,12 @@ docker compose -f /opt/axiom-observability-suite/docker-compose.yml --profile al
    `https://your-server.example.com/alertbot/webhook/axiom`
 4. Опционально: добавить кастомный заголовок `X-Webhook-Secret` и прописать его в `.env`.
 
-## Маршрутизация по топикам (план)
-
-Сейчас все алерты идут в один топик. Когда понадобится маршрутизация:
-
-**Подход:** отдельный Axiom Monitor на каждый проект/сервис.
-Бот не думает — название монитора определяет топик.
-
-**Планируемый формат `.env`:**
-
-```
-TOPIC_ROUTES=service-a:123,service-b:456,service-c:789
-TOPIC_DEFAULT=97
-```
-
-Реализация — ~10 строк в `app.py`: парсим `TOPIC_ROUTES`,
-ищем совпадение по полю `name` из payload, fallback на `TOPIC_DEFAULT`.
-
 ## Перенос на другой сервер
 
 1. Скопировать `/opt/axiom-observability-suite/` на новый сервер.
 2. Скопировать `.env` (убедиться что `COMPOSE_PROFILES=alertbot` раскомментирован).
-3. Настроить reverse proxy (axiom-to-telegram-bot слушает на `127.0.0.1:8092`):
+3. Скопировать `routes.yml`.
+4. Настроить reverse proxy (axiom-to-telegram-bot слушает на `127.0.0.1:8092`):
    - **nginx** (если уже установлен):
      ```nginx
      location /alertbot/ {
@@ -147,5 +142,5 @@ TOPIC_DEFAULT=97
          reverse_proxy /alertbot/* localhost:8092
      }
      ```
-4. `docker compose --profile alertbot up -d --build`
-5. Обновить URL вебхука в Axiom Notifier на новый домен.
+5. `docker compose --profile alertbot up -d --build`
+6. Обновить URL вебхука в Axiom Notifier на новый домен.

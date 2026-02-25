@@ -1,3 +1,4 @@
 .env
+routes.yml
 __pycache__/
 *.pyc

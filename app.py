@@ -1,17 +1,21 @@
-"""alertbot — Axiom webhook → Telegram notifier.
+"""alertbot — Axiom webhook → Telegram notifier with topic routing.
 
 Accepts alerts from two sources:
 - POST /webhook/axiom — Axiom Monitor webhooks (external)
 - POST /alert/local  — local alerts from health-watcher (internal, no auth)
+
+Routing rules are defined in routes.yml. Without it, falls back to
+TELEGRAM_CHAT_ID / TELEGRAM_TOPIC_ID from environment.
 """
 
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
+import yaml
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
@@ -30,7 +34,6 @@ class Settings(BaseSettings):
     telegram_bot_token: str
     telegram_chat_id: str = ""
     telegram_topic_id: str = ""
-    setup_mode: bool = False
     webhook_secret: str = ""  # optional, matched against X-Webhook-Secret header
 
     model_config = {"env_file": ".env"}
@@ -40,20 +43,78 @@ settings = Settings()
 TELEGRAM_API = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
 
 
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+
+def _load_routes() -> dict:
+    """Load routing config from routes.yml. Returns {} if file missing."""
+    routes_file = Path(__file__).parent / "routes.yml"
+    if not routes_file.exists():
+        return {}
+    with open(routes_file) as f:
+        return yaml.safe_load(f) or {}
+
+
+_routes = _load_routes()
+
+
+def _match_route(
+    rules: dict, *, services: set[str], hosts: set[str], monitor: str
+) -> bool:
+    """Check if alert metadata matches a route's rules (substring, case-insensitive)."""
+    for key, pattern in rules.items():
+        p = str(pattern).lower()
+        if key == "service":
+            if not any(p in s.lower() for s in services):
+                return False
+        elif key == "host":
+            if not any(p in h.lower() for h in hosts):
+                return False
+        elif key == "monitor":
+            if p not in monitor.lower():
+                return False
+    return True
+
+
+def resolve_target(
+    *, services: set[str] | None = None, hosts: set[str] | None = None, monitor: str = ""
+) -> tuple[str, int | None]:
+    """Determine chat_id and topic_id for an alert based on routes.yml.
+
+    Falls back to TELEGRAM_CHAT_ID / TELEGRAM_TOPIC_ID env vars if no routes.yml.
+    """
+    if not _routes:
+        chat_id = settings.telegram_chat_id
+        topic_id = int(settings.telegram_topic_id) if settings.telegram_topic_id else None
+        return chat_id, topic_id
+
+    services = services or set()
+    hosts = hosts or set()
+    groups = _routes.get("groups", {})
+    topics = _routes.get("topics", {})
+
+    for route in _routes.get("routes", []):
+        if _match_route(route.get("match", {}), services=services, hosts=hosts, monitor=monitor):
+            gname = route.get("group", _routes.get("default_group", ""))
+            tname = route.get("topic", _routes.get("default_topic", ""))
+            return str(groups.get(gname, "")), topics.get(tname)
+
+    gname = _routes.get("default_group", "")
+    tname = _routes.get("default_topic", "")
+    return str(groups.get(gname, "")), topics.get(tname)
+
+
 # ── Telegram sender ───────────────────────────────────────────────────────────
 
 
 async def send_message(
     text: str,
-    chat_id: str | None = None,
-    thread_id: str | None = None,
+    chat_id: str,
+    topic_id: int | None = None,
 ) -> bool:
     """Send message to Telegram. Returns True on success, False on failure."""
-    target_chat = chat_id or settings.telegram_chat_id
-    target_thread = thread_id or settings.telegram_topic_id or None
-
-    if not target_chat:
-        logger.warning("No TELEGRAM_CHAT_ID configured — dropping message")
+    if not chat_id:
+        logger.warning("No chat_id configured — dropping message")
         return False
 
     # Telegram max message length is 4096 chars
@@ -61,12 +122,12 @@ async def send_message(
         text = text[:3997] + "…"
 
     payload: dict[str, Any] = {
-        "chat_id": target_chat,
+        "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
     }
-    if target_thread:
-        payload["message_thread_id"] = int(target_thread)
+    if topic_id is not None:
+        payload["message_thread_id"] = topic_id
 
     async with httpx.AsyncClient() as client:
         try:
@@ -93,31 +154,35 @@ def _fmt_dt(iso: str) -> str:
         return iso
 
 
-def format_axiom_alert(payload: dict) -> str:
-    name = payload.get("name", "Unknown monitor")
-    description = payload.get("description", "")
-    count = payload.get("matchedCount", "?")
-    ts_start = payload.get("queryStartTime", "")
-    ts_end = payload.get("queryEndTime", "")
-
-    # Extract servers/services from matched events (if Axiom includes them)
+def _extract_axiom_metadata(payload: dict) -> tuple[set[str], set[str], list[str]]:
+    """Extract servers, services, and sample messages from Axiom payload."""
     servers: set[str] = set()
     services: set[str] = set()
     sample_messages: list[str] = []
 
-    matches = payload.get("queryResult", {}).get("matches", [])
-    for match in matches[:10]:
+    for match in payload.get("queryResult", {}).get("matches", [])[:10]:
         data = match.get("data", {})
         if h := data.get("host"):
             servers.add(h)
         if s := data.get("service"):
             services.add(s)
-        # grab a sample log message if present
         for key in ("message", "msg", "log", "_raw"):
             if msg := data.get(key):
                 if msg not in sample_messages:
                     sample_messages.append(str(msg)[:200])
                 break
+
+    return servers, services, sample_messages
+
+
+def format_axiom_alert(
+    payload: dict, servers: set[str], services: set[str], sample_messages: list[str]
+) -> str:
+    name = payload.get("name", "Unknown monitor")
+    description = payload.get("description", "")
+    count = payload.get("matchedCount", "?")
+    ts_start = payload.get("queryStartTime", "")
+    ts_end = payload.get("queryEndTime", "")
 
     lines = [f"🚨 <b>{name}</b>"]
     if description:
@@ -139,67 +204,18 @@ def format_axiom_alert(payload: dict) -> str:
     return "\n".join(lines)
 
 
-# ── Setup mode: polling to discover chat_id / thread_id ──────────────────────
-
-
-async def _setup_polling() -> None:
-    logger.info("SETUP MODE active — send any message in the target group/topic")
-    offset = 0
-    async with httpx.AsyncClient() as client:
-        while True:
-            try:
-                r = await client.get(
-                    f"{TELEGRAM_API}/getUpdates",
-                    params={"offset": offset, "timeout": 30},
-                    timeout=40,
-                )
-                for upd in r.json().get("result", []):
-                    offset = upd["update_id"] + 1
-                    msg = upd.get("message") or upd.get("channel_post")
-                    if not msg:
-                        continue
-
-                    chat_id = msg["chat"]["id"]
-                    thread_id = msg.get("message_thread_id")
-                    chat_title = msg["chat"].get("title", str(chat_id))
-
-                    logger.info(
-                        f"Message in {chat_title!r}: "
-                        f"chat_id={chat_id}, thread_id={thread_id}"
-                    )
-
-                    reply = (
-                        f"✅ <b>Setup info for:</b> {chat_title}\n\n"
-                        f"TELEGRAM_CHAT_ID=<code>{chat_id}</code>\n"
-                        f"TELEGRAM_TOPIC_ID=<code>{thread_id or ''}</code>\n\n"
-                        f"Add these to .env, set SETUP_MODE=false, restart."
-                    )
-                    reply_payload: dict[str, Any] = {
-                        "chat_id": chat_id,
-                        "text": reply,
-                        "parse_mode": "HTML",
-                    }
-                    if thread_id:
-                        reply_payload["message_thread_id"] = thread_id
-                    await client.post(f"{TELEGRAM_API}/sendMessage", json=reply_payload)
-
-            except Exception as e:
-                logger.error(f"Polling error: {e}")
-                await asyncio.sleep(5)
-
-
 # ── App ───────────────────────────────────────────────────────────────────────
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.setup_mode:
-        asyncio.create_task(_setup_polling())
+    if _routes:
+        n = len(_routes.get("routes", []))
+        logger.info(f"Loaded {n} route(s) from routes.yml")
+    elif settings.telegram_chat_id:
+        logger.info("No routes.yml — using TELEGRAM_CHAT_ID/TELEGRAM_TOPIC_ID fallback")
     else:
-        if not settings.telegram_chat_id:
-            logger.warning(
-                "TELEGRAM_CHAT_ID not set — set SETUP_MODE=true to discover it"
-            )
+        logger.warning("No routes.yml and no TELEGRAM_CHAT_ID — alerts will be dropped")
     yield
 
 
@@ -230,7 +246,11 @@ async def local_alert(alert: LocalAlert):
 
     logger.info(f"Local alert: {alert.title!r}")
 
-    ok = await send_message(text)
+    # Extract service from title for routing (format: "Container unhealthy: <name>")
+    service = alert.title.split(":", 1)[-1].strip() if ":" in alert.title else alert.title
+    chat_id, topic_id = resolve_target(services={service})
+
+    ok = await send_message(text, chat_id=chat_id, topic_id=topic_id)
     if not ok:
         raise HTTPException(status_code=502, detail="Telegram send failed")
     return {"ok": True}
@@ -247,9 +267,15 @@ async def axiom_webhook(request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    logger.info(
-        f"Axiom alert: {payload.get('name')!r} — {payload.get('matchedCount')} events"
-    )
+    monitor_name = payload.get("name", "")
+    logger.info(f"Axiom alert: {monitor_name!r} — {payload.get('matchedCount')} events")
 
-    await send_message(format_axiom_alert(payload))
+    servers, services, samples = _extract_axiom_metadata(payload)
+    chat_id, topic_id = resolve_target(services=services, hosts=servers, monitor=monitor_name)
+
+    await send_message(
+        format_axiom_alert(payload, servers, services, samples),
+        chat_id=chat_id,
+        topic_id=topic_id,
+    )
     return {"ok": True}

@@ -36,6 +36,8 @@ services:
     container_name: axiom-to-telegram-bot
     restart: unless-stopped
     env_file: .env
+    volumes:
+      - ./routes.yml:/app/routes.yml:ro
     ports:
       - "127.0.0.1:8092:8080"
     profiles: ["alertbot"]

@@ -1,0 +1,10 @@
+.git
+.env
+.env.example
+routes.yml
+routes.yml.example
+*.md
+*.pyc
+__pycache__
+.gitignore
+.github

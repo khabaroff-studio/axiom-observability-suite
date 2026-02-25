@@ -1,0 +1,25 @@
+# Telegram routing rules for alertbot.
+# Copy to routes.yml and fill in real IDs.
+# Without routes.yml, alertbot falls back to TELEGRAM_CHAT_ID / TELEGRAM_TOPIC_ID env vars.
+
+groups:
+  my-group: -100XXXXXXXXXX       # Telegram supergroup ID (with -100 prefix)
+
+topics:
+  general: 1                      # General topic
+  project-a: 123                  # Topic for project A
+  project-b: 456                  # Topic for project B
+
+routes:
+  # Substring match on: service (container name), host (server), monitor (Axiom monitor name).
+  # First matching route wins.
+  - match: { service: "my-service" }
+    group: my-group
+    topic: project-a
+
+  - match: { service: "other" }
+    group: my-group
+    topic: project-b
+
+default_group: my-group
+default_topic: general
