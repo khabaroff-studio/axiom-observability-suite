@@ -49,7 +49,8 @@ docker compose up -d
 ```bash
 # Дополнительно в .env:
 # COMPOSE_PROFILES=alertbot
-# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_TOPIC_ID, AXIOM_MGMT_TOKEN
+# TELEGRAM_BOT_TOKEN, AXIOM_MGMT_TOKEN
+# + скопировать routes.yml из routes.yml.example (маршрутизация алертов по топикам)
 docker compose --profile alertbot up -d
 ```
 

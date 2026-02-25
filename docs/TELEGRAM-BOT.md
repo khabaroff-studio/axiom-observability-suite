@@ -37,33 +37,20 @@ health-watcher  → POST /alert/local    ─┘
 ```
 TELEGRAM_BOT_TOKEN=     # токен бота от @BotFather
 WEBHOOK_SECRET=         # опционально: Axiom передаёт в заголовке X-Webhook-Secret
+
+# Fallback (используется если нет routes.yml, а также health-watcher.sh):
+# TELEGRAM_CHAT_ID=
+# TELEGRAM_TOPIC_ID=
 ```
 
 ### routes.yml (маршрутизация по топикам)
 
-```yaml
-groups:
-  my-group: -100XXXXXXXXXX       # Telegram supergroup ID (с префиксом -100)
+См. `routes.yml.example` — шаблон с комментариями.
 
-topics:
-  general: 1                      # General topic
-  project-a: 123                  # Topic для проекта A
+Как получить ID топика: из ссылки на сообщение в топике.
+`https://t.me/c/3779402801/97/165` → topic_id = `97`, chat_id = `-1003779402801`.
 
-routes:
-  # Substring match по: service (имя контейнера), host (сервер), monitor (имя Axiom монитора).
-  # Первый совпавший route побеждает.
-  - match: { service: "my-service" }
-    group: my-group
-    topic: project-a
-
-default_group: my-group
-default_topic: general
-```
-
-**Как получить ID топика:** из ссылки на сообщение в топике.
-Ссылка вида `https://t.me/c/3779402801/97/165` → topic_id = `97`, chat_id = `-1003779402801`.
-
-**Без routes.yml бот не запустится** (fail fast).
+Без `routes.yml` бот fallback'ится на `TELEGRAM_CHAT_ID` / `TELEGRAM_TOPIC_ID` из `.env`.
 
 ## Эндпоинты
 
