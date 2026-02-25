@@ -77,7 +77,10 @@ def _match_route(
 
 
 def resolve_target(
-    *, services: set[str] | None = None, hosts: set[str] | None = None, monitor: str = ""
+    *,
+    services: set[str] | None = None,
+    hosts: set[str] | None = None,
+    monitor: str = "",
 ) -> tuple[str, int | None]:
     """Determine chat_id and topic_id for an alert based on routes.yml.
 
@@ -85,7 +88,9 @@ def resolve_target(
     """
     if not _routes:
         chat_id = settings.telegram_chat_id
-        topic_id = int(settings.telegram_topic_id) if settings.telegram_topic_id else None
+        topic_id = (
+            int(settings.telegram_topic_id) if settings.telegram_topic_id else None
+        )
         return chat_id, topic_id
 
     services = services or set()
@@ -94,7 +99,9 @@ def resolve_target(
     topics = _routes.get("topics", {})
 
     for route in _routes.get("routes", []):
-        if _match_route(route.get("match", {}), services=services, hosts=hosts, monitor=monitor):
+        if _match_route(
+            route.get("match", {}), services=services, hosts=hosts, monitor=monitor
+        ):
             gname = route.get("group", _routes.get("default_group", ""))
             tname = route.get("topic", _routes.get("default_topic", ""))
             return str(groups.get(gname, "")), topics.get(tname)
@@ -247,7 +254,9 @@ async def local_alert(alert: LocalAlert):
     logger.info(f"Local alert: {alert.title!r}")
 
     # Extract service from title for routing (format: "Container unhealthy: <name>")
-    service = alert.title.split(":", 1)[-1].strip() if ":" in alert.title else alert.title
+    service = (
+        alert.title.split(":", 1)[-1].strip() if ":" in alert.title else alert.title
+    )
     chat_id, topic_id = resolve_target(services={service})
 
     ok = await send_message(text, chat_id=chat_id, topic_id=topic_id)
@@ -271,7 +280,9 @@ async def axiom_webhook(request: Request):
     logger.info(f"Axiom alert: {monitor_name!r} — {payload.get('matchedCount')} events")
 
     servers, services, samples = _extract_axiom_metadata(payload)
-    chat_id, topic_id = resolve_target(services=services, hosts=servers, monitor=monitor_name)
+    chat_id, topic_id = resolve_target(
+        services=services, hosts=servers, monitor=monitor_name
+    )
 
     await send_message(
         format_axiom_alert(payload, servers, services, samples),
