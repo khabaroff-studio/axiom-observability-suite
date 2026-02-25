@@ -6,7 +6,7 @@ groups:
   my-group: -100XXXXXXXXXX       # Telegram supergroup ID (with -100 prefix)
 
 topics:
-  general: 1                      # General topic
+  general:                         # null = General topic (no thread_id sent)
   project-a: 123                  # Topic for project A
   project-b: 456                  # Topic for project B
 
