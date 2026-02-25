@@ -1,4 +1,9 @@
-"""alertbot — Axiom webhook → Telegram notifier."""
+"""alertbot — Axiom webhook → Telegram notifier.
+
+Accepts alerts from two sources:
+- POST /webhook/axiom — Axiom Monitor webhooks (external)
+- POST /alert/local  — local alerts from health-watcher (internal, no auth)
+"""
 
 import asyncio
 import logging
@@ -8,6 +13,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
 logging.basicConfig(
@@ -41,13 +47,14 @@ async def send_message(
     text: str,
     chat_id: str | None = None,
     thread_id: str | None = None,
-) -> None:
+) -> bool:
+    """Send message to Telegram. Returns True on success, False on failure."""
     target_chat = chat_id or settings.telegram_chat_id
     target_thread = thread_id or settings.telegram_topic_id or None
 
     if not target_chat:
         logger.warning("No TELEGRAM_CHAT_ID configured — dropping message")
-        return
+        return False
 
     # Telegram max message length is 4096 chars
     if len(text) > 4000:
@@ -68,8 +75,11 @@ async def send_message(
             )
             if not r.is_success:
                 logger.error(f"Telegram API error {r.status_code}: {r.text}")
+                return False
+            return True
         except Exception as e:
             logger.error(f"Telegram send failed: {e}")
+            return False
 
 
 # ── Formatters ────────────────────────────────────────────────────────────────
@@ -199,6 +209,31 @@ app = FastAPI(title="alertbot", lifespan=lifespan)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+class LocalAlert(BaseModel):
+    title: str
+    body: str = ""
+
+
+@app.post("/alert/local")
+async def local_alert(alert: LocalAlert):
+    """Accept alerts from local services (health-watcher).
+
+    Returns 502 if Telegram delivery fails, so the caller can fall back
+    to sending directly via Telegram API.
+    """
+    lines = [f"🔧 <b>{alert.title}</b>"]
+    if alert.body:
+        lines.append(f"<code>{alert.body}</code>")
+    text = "\n".join(lines)
+
+    logger.info(f"Local alert: {alert.title!r}")
+
+    ok = await send_message(text)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Telegram send failed")
+    return {"ok": True}
 
 
 @app.post("/webhook/axiom")
