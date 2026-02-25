@@ -206,9 +206,11 @@ def main():
             i = 1
             while i < len(rest):
                 if rest[i] == "--interval" and i + 1 < len(rest):
-                    interval = int(rest[i + 1]); i += 2
+                    interval = int(rest[i + 1])
+                    i += 2
                 elif rest[i] == "--threshold" and i + 1 < len(rest):
-                    threshold = int(rest[i + 1]); i += 2
+                    threshold = int(rest[i + 1])
+                    i += 2
                 else:
                     i += 1
 
@@ -239,7 +241,8 @@ def main():
             i = 0
             while i < len(rest):
                 if rest[i] == "--interval" and i + 1 < len(rest):
-                    interval = int(rest[i + 1]); i += 2
+                    interval = int(rest[i + 1])
+                    i += 2
                 else:
                     i += 1
             notifiers = api("GET", "/v2/notifiers") or []
