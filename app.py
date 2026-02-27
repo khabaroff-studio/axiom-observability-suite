@@ -438,8 +438,6 @@ def _format_host_service(servers: set[str], services: set[str]) -> tuple[str, st
     else:
         return "", "", ""
 
-    if len(servers) > 1 or len(services) > 1:
-        display += " (multiple)"
     return host, service, display
 
 
@@ -451,6 +449,11 @@ _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _ANSI_LEFTOVER_RE = re.compile(r"\[[0-9;]*m")
 _ERROR_KEYWORDS = ["error", "exception", "traceback", "critical"]
 _ERROR_LEVELS = {"error", "exception", "critical", "fatal"}
+_NOISE_SUBSTRINGS = [
+    "DisallowedHost",
+    "Invalid HTTP_HOST header",
+    "SecurityWarning",
+]
 
 
 def _redact(text: str) -> str:
@@ -498,8 +501,39 @@ def _is_error_message(text: str) -> bool:
     return False
 
 
-def _filter_rows(rows: list[dict[str, Any]], service_hint: str) -> list[dict[str, Any]]:
+def _is_noise_message(text: str) -> bool:
+    return any(token in text for token in _NOISE_SUBSTRINGS)
+
+
+def _filter_messages(messages: list[str]) -> tuple[list[str], bool]:
+    if not messages:
+        return [], False
+
+    filtered: list[str] = []
+    noise_hits = 0
+    for message in messages:
+        if _is_noise_message(message):
+            noise_hits += 1
+            continue
+        if _is_error_message(message):
+            filtered.append(message)
+
+    noise_only = noise_hits > 0 and not filtered
+    return filtered, noise_only
+
+
+def _select_top_error(messages: list[str]) -> str | None:
+    if not messages:
+        return None
+    filtered = [m for m in messages if not m.lower().startswith("traceback")]
+    return _most_common(filtered) or _most_common(messages)
+
+
+def _filter_rows(
+    rows: list[dict[str, Any]], service_hint: str
+) -> tuple[list[dict[str, Any]], bool]:
     filtered: list[dict[str, Any]] = []
+    noise_hits = 0
     service_hint_lower = service_hint.lower()
     for row in rows:
         service = str(row.get("service") or "")
@@ -508,10 +542,15 @@ def _filter_rows(rows: list[dict[str, Any]], service_hint: str) -> list[dict[str
         message = _row_message_text(row)
         if not message:
             continue
+        if _is_noise_message(message):
+            noise_hits += 1
+            continue
         if not _is_error_message(message):
             continue
         filtered.append(row)
-    return filtered
+
+    noise_only = noise_hits > 0 and not filtered
+    return filtered, noise_only
 
 
 def _parse_time(value: str) -> datetime | None:
@@ -1017,13 +1056,10 @@ def format_axiom_alert(
     display_name = name or "Unknown monitor"
     display_count = count if count is not None else "?"
     title_prefix = "✅" if status == "resolved" else "🚨"
-    header = (
-        f"{tag} {title_prefix} <b>{display_name}</b>"
-        if tag
-        else f"{title_prefix} <b>{display_name}</b>"
-    )
+    header = f"{title_prefix} <b>{display_name}</b>"
 
-    lines = [header]
+    lines = [tag] if tag else []
+    lines.append(header)
     if host_service:
         lines.append(f"📍 {host_service}")
     else:
@@ -1031,7 +1067,7 @@ def format_axiom_alert(
             lines.append(f"🖥 Server: {', '.join(sorted(servers))}")
         if services:
             lines.append(f"⚙️ Service: {', '.join(sorted(services))}")
-    lines.append(f"📊 Событий: <b>{display_count}</b>")
+    lines.append(f"📊 Записей с ошибкой: <b>{display_count}</b>")
     if ts_start and ts_end:
         lines.append(f"🕐 {_fmt_dt(ts_start)} → {_fmt_dt(ts_end)}")
     if top_error:
@@ -1173,15 +1209,32 @@ async def axiom_webhook(request: Request):
         user_agents,
         paths,
     ) = _extract_match_fields(matches)
+    service_hint = _guess_service_from_monitor(route_monitor) or (
+        sorted(services)[0] if services else ""
+    )
+    filtered_messages, noise_only = _filter_messages(messages)
+    if noise_only:
+        logger.info("Axiom alert dropped: noise-only messages")
+        return {"ok": True}
+
+    messages = filtered_messages
+
+    if service_hint:
+        filtered_services = {s for s in services if service_hint.lower() in s.lower()}
+        services = filtered_services or ({service_hint} if service_hint else set())
+
+    if not services and service_hint:
+        services.add(service_hint)
+
     if not services:
         guessed_service = _guess_service_from_monitor(route_monitor)
         if guessed_service:
             services.add(guessed_service)
 
-    service_hint = sorted(services)[0] if services else ""
+    service_hint = service_hint or (sorted(services)[0] if services else "")
     host_hint = sorted(servers)[0] if servers else ""
     if (
-        not messages
+        (not messages or not servers)
         and settings.axiom_mgmt_token
         and settings.axiom_dataset
         and service_hint
@@ -1193,7 +1246,11 @@ async def axiom_webhook(request: Request):
             ts_start=ts_start,
             ts_end=ts_end,
         )
-        filtered_rows = _filter_rows(rows, service_hint)
+        filtered_rows, rows_noise_only = _filter_rows(rows, service_hint)
+        if rows_noise_only:
+            logger.info("Axiom alert dropped: noise-only rows")
+            return {"ok": True}
+
         if filtered_rows:
             (
                 row_servers,
@@ -1205,15 +1262,23 @@ async def axiom_webhook(request: Request):
             ) = _extract_fields_from_rows(filtered_rows)
             servers |= row_servers
             services |= row_services
-            messages.extend(row_messages)
-            statuses.extend(row_statuses)
-            user_agents.extend(row_user_agents)
-            paths.extend(row_paths)
+            if not messages:
+                messages = row_messages
+                statuses = row_statuses
+                user_agents = row_user_agents
+                paths = row_paths
+
+    if not messages:
+        filtered_messages, noise_only = _filter_messages(messages)
+        if noise_only:
+            logger.info("Axiom alert dropped: noise-only messages")
+            return {"ok": True}
+        messages = filtered_messages
 
     services = {_normalize_service_name(s) for s in services if s}
 
     top_error_enabled = _coerce_bool(defaults.get("top_error"), True)
-    top_error = _most_common(messages) if top_error_enabled else None
+    top_error = _select_top_error(messages) if top_error_enabled else None
     sample_count = _coerce_int(defaults.get("sample_count"), 2)
     sample_messages = _sample_messages(messages, sample_count)
 
