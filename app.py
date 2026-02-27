@@ -519,7 +519,13 @@ async def _query_axiom_rows(
     payload = {"apl": apl, "startTime": start_time, "endTime": end_time}
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(url, headers=headers, json=payload, timeout=10)
+            response = await client.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=10,
+                follow_redirects=True,
+            )
             response.raise_for_status()
             return _rows_from_tabular(response.json())
         except httpx.HTTPError as exc:
