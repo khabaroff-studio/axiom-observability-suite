@@ -34,8 +34,8 @@ default_topic: general
 
 # Теги для двух уровней важности
 tags:
-  user_impact: "#userimpact"       # P1, влияет на пользователей
-  service_errors: "#serviceerrors"  # P2, ошибки сервиса
+  user_impact: "#UserImpact"       # P1, влияет на пользователей
+  service_errors: "#ServiceErrors"  # P2, ошибки сервиса
 
 # Дефолтный формат сообщения
 defaults:

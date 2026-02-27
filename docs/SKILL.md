@@ -17,7 +17,7 @@
 
 ## Выход
 
-- Сообщение в Telegram с тегом `#userimpact` или `#serviceerrors`
+- Сообщение в Telegram с тегом `#UserImpact` или `#ServiceErrors`
 - Контекст: host:service, count + окно, top error, sample строки
 - Общий runbook для быстрого triage
 
@@ -37,8 +37,8 @@
 ## Как интерпретировать алерт
 
 1) Применить `drop` фильтры — если совпало, алерт не отправлять
-2) Найти профили сервиса → если совпало с `p1`, тег `#userimpact`
-3) Иначе тег `#serviceerrors`
+2) Найти профили сервиса → если совпало с `p1`, тег `#UserImpact`
+3) Иначе тег `#ServiceErrors`
 4) Собрать сообщение по дефолтам (count/окно/top error/sample/runbook)
 
 ## Пример runbook (общий)

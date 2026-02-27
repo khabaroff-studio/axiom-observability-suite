@@ -448,6 +448,9 @@ _REDACT_PATTERNS = [
     (re.compile(r"(Bearer\s+)[A-Za-z0-9._-]+"), r"\1<redacted>"),
 ]
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_ANSI_LEFTOVER_RE = re.compile(r"\[[0-9;]*m")
+_ERROR_KEYWORDS = ["error", "exception", "traceback", "critical"]
+_ERROR_LEVELS = {"error", "exception", "critical", "fatal"}
 
 
 def _redact(text: str) -> str:
@@ -461,7 +464,54 @@ def _redact(text: str) -> str:
 
 def _sanitize_line(text: str, limit: int = 200) -> str:
     cleaned = _ANSI_ESCAPE_RE.sub("", text)
+    cleaned = _ANSI_LEFTOVER_RE.sub("", cleaned)
     return html.escape(_truncate(_redact(cleaned), limit), quote=False)
+
+
+def _row_message_text(row: dict[str, Any]) -> str:
+    for key in ("message", "msg", "log", "_raw"):
+        value = row.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _is_error_message(text: str) -> bool:
+    lower = text.lower()
+    if any(keyword in lower for keyword in _ERROR_KEYWORDS):
+        return True
+
+    stripped = text.lstrip()
+    if stripped.startswith("{"):
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return False
+        if isinstance(parsed, dict):
+            level = str(parsed.get("level") or parsed.get("severity") or "").lower()
+            if level in _ERROR_LEVELS:
+                return True
+            message = str(parsed.get("message") or "")
+            if any(keyword in message.lower() for keyword in _ERROR_KEYWORDS):
+                return True
+
+    return False
+
+
+def _filter_rows(rows: list[dict[str, Any]], service_hint: str) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
+    service_hint_lower = service_hint.lower()
+    for row in rows:
+        service = str(row.get("service") or "")
+        if service_hint_lower and service_hint_lower not in service.lower():
+            continue
+        message = _row_message_text(row)
+        if not message:
+            continue
+        if not _is_error_message(message):
+            continue
+        filtered.append(row)
+    return filtered
 
 
 def _parse_time(value: str) -> datetime | None:
@@ -992,10 +1042,8 @@ def format_axiom_alert(
             lines.append(f"<code>{_sanitize_line(m, 200)}</code>")
     if runbook:
         lines.append("Что делать:")
-        lines.append("<blockquote>")
-        for step in runbook:
-            lines.append(_sanitize_line(step, 300))
-        lines.append("</blockquote>")
+        rendered_steps = [_sanitize_line(step, 300) for step in runbook]
+        lines.append("<blockquote>" + "\n".join(rendered_steps) + "</blockquote>")
 
     return "\n".join(lines)
 
@@ -1145,7 +1193,8 @@ async def axiom_webhook(request: Request):
             ts_start=ts_start,
             ts_end=ts_end,
         )
-        if rows:
+        filtered_rows = _filter_rows(rows, service_hint)
+        if filtered_rows:
             (
                 row_servers,
                 row_services,
@@ -1153,7 +1202,7 @@ async def axiom_webhook(request: Request):
                 row_statuses,
                 row_user_agents,
                 row_paths,
-            ) = _extract_fields_from_rows(rows)
+            ) = _extract_fields_from_rows(filtered_rows)
             servers |= row_servers
             services |= row_services
             messages.extend(row_messages)
