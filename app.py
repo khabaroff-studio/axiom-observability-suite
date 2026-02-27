@@ -70,7 +70,7 @@ async def _attach_notifiers_once() -> int:
         return 0
 
     headers = _axiom_headers()
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         notifiers_resp = await client.get(
             f"{AXIOM_API_BASE}/v2/notifiers", headers=headers, timeout=10
         )
