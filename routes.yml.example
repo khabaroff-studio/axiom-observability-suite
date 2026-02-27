@@ -45,7 +45,7 @@ defaults:
   # Разрешенные плейсхолдеры: {host}, {service}, {monitor}
   runbook:
     - "Зайди по SSH на {host}"
-    - "Проверь логи контейнера {service}: docker logs {service} --tail 200"
+    - "Найди контейнер и посмотри логи: docker ps --format '{{.Names}}' | grep {service}; docker logs <container> --tail 200"
 
 # Шум режем полностью, ничего не отправляем
 # Поддерживаемые поля: title, message, status, user_agent, path, host, service

@@ -447,6 +447,8 @@ _REDACT_PATTERNS = [
 ]
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _ANSI_LEFTOVER_RE = re.compile(r"\[[0-9;]*m")
+_LOG_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[,.]\d+)?\s+")
+_LEVEL_PREFIX_RE = re.compile(r"^(?:\[[A-Z]+\]|[A-Z]+:)\s+")
 _ERROR_KEYWORDS = ["error", "exception", "traceback", "critical"]
 _ERROR_LEVELS = {"error", "exception", "critical", "fatal"}
 _NOISE_SUBSTRINGS = [
@@ -479,6 +481,12 @@ def _row_message_text(row: dict[str, Any]) -> str:
     return ""
 
 
+def _strip_log_prefix(text: str) -> str:
+    cleaned = _LOG_PREFIX_RE.sub("", text)
+    cleaned = _LEVEL_PREFIX_RE.sub("", cleaned)
+    return cleaned.strip()
+
+
 def _extract_primary_error(text: str) -> str | None:
     if not text:
         return None
@@ -496,12 +504,12 @@ def _extract_primary_error(text: str) -> str | None:
             level = str(parsed.get("level") or parsed.get("severity") or "").lower()
             error = parsed.get("error") or parsed.get("exception") or parsed.get("exc")
             if error:
-                return str(error)
+                return _strip_log_prefix(str(error))
             message = parsed.get("message") or parsed.get("msg")
             if isinstance(message, str) and (
                 level in _ERROR_LEVELS or _is_error_message(message)
             ):
-                return message
+                return _strip_log_prefix(message)
 
     lines = [line.strip() for line in stripped.splitlines() if line.strip()]
     if not lines:
@@ -512,11 +520,11 @@ def _extract_primary_error(text: str) -> str | None:
         if lower.startswith("traceback"):
             continue
         if any(keyword in lower for keyword in ("error", "exception", "critical")):
-            return line
+            return _strip_log_prefix(line)
 
     for line in reversed(lines):
         if not line.lower().startswith("traceback"):
-            return line
+            return _strip_log_prefix(line)
 
     return None
 
