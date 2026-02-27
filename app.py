@@ -485,6 +485,22 @@ def _rows_from_tabular(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _rows_from_query_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = _rows_from_tabular(payload)
+    if rows:
+        return rows
+
+    matches = payload.get("matches")
+    if isinstance(matches, list):
+        extracted: list[dict[str, Any]] = []
+        for match in matches:
+            if isinstance(match, dict) and isinstance(match.get("data"), dict):
+                extracted.append(match["data"])
+        return extracted
+
+    return []
+
+
 async def _query_axiom_rows(
     *,
     dataset: str,
@@ -515,7 +531,7 @@ async def _query_axiom_rows(
     apl = " ".join(apl_parts)
 
     headers = _axiom_headers()
-    url = f"{AXIOM_QUERY_BASE}/v1/query/_apl?format=tabular"
+    url = f"{AXIOM_QUERY_BASE}/api/v1/datasets/{dataset}/query"
     payload = {"apl": apl, "startTime": start_time, "endTime": end_time}
     async with httpx.AsyncClient() as client:
         try:
@@ -527,8 +543,11 @@ async def _query_axiom_rows(
                 follow_redirects=True,
             )
             response.raise_for_status()
-            return _rows_from_tabular(response.json())
-        except httpx.HTTPError as exc:
+            payload = response.json()
+            if not isinstance(payload, dict):
+                return []
+            return _rows_from_query_payload(payload)
+        except (httpx.HTTPError, ValueError) as exc:
             logger.warning("Axiom enrichment query failed: %s", exc)
             return []
 
