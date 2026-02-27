@@ -9,6 +9,7 @@ TELEGRAM_CHAT_ID / TELEGRAM_TOPIC_ID from environment.
 """
 
 import asyncio
+import html
 import json
 import re
 import logging
@@ -339,9 +340,9 @@ def _truncate(text: str, limit: int = 200) -> str:
 def _render_runbook(
     steps: list[str], host: str, service: str, monitor: str
 ) -> list[str]:
-    host_value = host or "unknown-host"
-    service_value = service or "unknown-service"
-    monitor_value = monitor or "unknown-monitor"
+    host_value = host or "нужный хост"
+    service_value = service or "нужный сервис"
+    monitor_value = monitor or "нужный монитор"
     rendered: list[str] = []
     for step in steps:
         try:
@@ -428,12 +429,37 @@ def _extract_match_fields(
 def _format_host_service(servers: set[str], services: set[str]) -> tuple[str, str, str]:
     host = sorted(servers)[0] if servers else ""
     service = sorted(services)[0] if services else ""
-    if host or service:
-        display = f"{host or 'unknown-host'}:{service or 'unknown-service'}"
-        if len(servers) > 1 or len(services) > 1:
-            display += " (multiple)"
-        return host, service, display
-    return "", "", ""
+    if host and service:
+        display = f"{host}:{service}"
+    elif service:
+        display = service
+    elif host:
+        display = host
+    else:
+        return "", "", ""
+
+    if len(servers) > 1 or len(services) > 1:
+        display += " (multiple)"
+    return host, service, display
+
+
+_REDACT_PATTERNS = [
+    (re.compile(r"bot\d{6,}:[A-Za-z0-9_-]{20,}"), "bot<redacted>"),
+    (re.compile(r"(Bearer\s+)[A-Za-z0-9._-]+"), r"\1<redacted>"),
+]
+
+
+def _redact(text: str) -> str:
+    if not text:
+        return text
+    result = text
+    for pattern, replacement in _REDACT_PATTERNS:
+        result = pattern.sub(replacement, result)
+    return result
+
+
+def _sanitize_line(text: str, limit: int = 200) -> str:
+    return html.escape(_truncate(_redact(text), limit), quote=False)
 
 
 def _parse_time(value: str) -> datetime | None:
@@ -957,15 +983,17 @@ def format_axiom_alert(
     if ts_start and ts_end:
         lines.append(f"🕐 {_fmt_dt(ts_start)} → {_fmt_dt(ts_end)}")
     if top_error:
-        lines.append(f"🧾 Топ-ошибка: <code>{_truncate(top_error, 200)}</code>")
+        lines.append(f"🧾 Топ-ошибка: <code>{_sanitize_line(top_error, 200)}</code>")
     if sample_messages:
         lines.append("🧾 Примеры:")
         for m in sample_messages:
-            lines.append(f"<code>{_truncate(m, 200)}</code>")
+            lines.append(f"<code>{_sanitize_line(m, 200)}</code>")
     if runbook:
         lines.append("Что делать:")
+        lines.append("<blockquote>")
         for step in runbook:
-            lines.append(f"- {step}")
+            lines.append(_sanitize_line(step, 300))
+        lines.append("</blockquote>")
 
     return "\n".join(lines)
 
