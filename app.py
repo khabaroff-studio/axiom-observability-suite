@@ -479,6 +479,48 @@ def _row_message_text(row: dict[str, Any]) -> str:
     return ""
 
 
+def _extract_primary_error(text: str) -> str | None:
+    if not text:
+        return None
+
+    stripped = text.strip()
+    if not stripped:
+        return None
+
+    if stripped.startswith("{"):
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            level = str(parsed.get("level") or parsed.get("severity") or "").lower()
+            error = parsed.get("error") or parsed.get("exception") or parsed.get("exc")
+            if error:
+                return str(error)
+            message = parsed.get("message") or parsed.get("msg")
+            if isinstance(message, str) and (
+                level in _ERROR_LEVELS or _is_error_message(message)
+            ):
+                return message
+
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    if not lines:
+        return None
+
+    for line in reversed(lines):
+        lower = line.lower()
+        if lower.startswith("traceback"):
+            continue
+        if any(keyword in lower for keyword in ("error", "exception", "critical")):
+            return line
+
+    for line in reversed(lines):
+        if not line.lower().startswith("traceback"):
+            return line
+
+    return None
+
+
 def _is_error_message(text: str) -> bool:
     lower = text.lower()
     if any(keyword in lower for keyword in _ERROR_KEYWORDS):
@@ -515,8 +557,16 @@ def _filter_messages(messages: list[str]) -> tuple[list[str], bool]:
         if _is_noise_message(message):
             noise_hits += 1
             continue
-        if _is_error_message(message):
-            filtered.append(message)
+
+        primary = _extract_primary_error(message)
+        if not primary:
+            continue
+        if _is_noise_message(primary):
+            noise_hits += 1
+            continue
+        if not _is_error_message(primary) and not _is_error_message(message):
+            continue
+        filtered.append(primary)
 
     noise_only = noise_hits > 0 and not filtered
     return filtered, noise_only
@@ -525,8 +575,7 @@ def _filter_messages(messages: list[str]) -> tuple[list[str], bool]:
 def _select_top_error(messages: list[str]) -> str | None:
     if not messages:
         return None
-    filtered = [m for m in messages if not m.lower().startswith("traceback")]
-    return _most_common(filtered) or _most_common(messages)
+    return _most_common(messages)
 
 
 def _filter_rows(
@@ -545,9 +594,17 @@ def _filter_rows(
         if _is_noise_message(message):
             noise_hits += 1
             continue
-        if not _is_error_message(message):
+        primary = _extract_primary_error(message)
+        if not primary:
             continue
-        filtered.append(row)
+        if _is_noise_message(primary):
+            noise_hits += 1
+            continue
+        if not _is_error_message(primary) and not _is_error_message(message):
+            continue
+        cleaned_row = dict(row)
+        cleaned_row["message"] = primary
+        filtered.append(cleaned_row)
 
     noise_only = noise_hits > 0 and not filtered
     return filtered, noise_only
@@ -1067,7 +1124,7 @@ def format_axiom_alert(
             lines.append(f"🖥 Server: {', '.join(sorted(servers))}")
         if services:
             lines.append(f"⚙️ Service: {', '.join(sorted(services))}")
-    lines.append(f"📊 Записей с ошибкой: <b>{display_count}</b>")
+    lines.append(f"📊 Ошибок в окне: <b>{display_count}</b>")
     if ts_start and ts_end:
         lines.append(f"🕐 {_fmt_dt(ts_start)} → {_fmt_dt(ts_end)}")
     if top_error:
@@ -1281,6 +1338,12 @@ async def axiom_webhook(request: Request):
     top_error = _select_top_error(messages) if top_error_enabled else None
     sample_count = _coerce_int(defaults.get("sample_count"), 2)
     sample_messages = _sample_messages(messages, sample_count)
+    if (
+        top_error
+        and sample_messages
+        and all(sample == top_error for sample in sample_messages)
+    ):
+        sample_messages = []
 
     top_status = _most_common(statuses) or ""
     top_user_agent = _most_common(user_agents) or ""
