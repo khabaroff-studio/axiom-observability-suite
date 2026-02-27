@@ -338,10 +338,11 @@ def _truncate(text: str, limit: int = 200) -> str:
 
 
 def _render_runbook(
-    steps: list[str], host: str, service: str, monitor: str
+    steps: list[str], host: str, service: str, container: str, monitor: str
 ) -> list[str]:
     host_value = host or "нужный хост"
     service_value = service or "нужный сервис"
+    container_value = container or service_value
     monitor_value = monitor or "нужный монитор"
     rendered: list[str] = []
     for step in steps:
@@ -350,6 +351,7 @@ def _render_runbook(
                 step.format(
                     host=host_value,
                     service=service_value,
+                    container=container_value,
                     monitor=monitor_value,
                 )
             )
@@ -382,13 +384,24 @@ def _sample_messages(messages: list[str], sample_count: int) -> list[str]:
 
 def _extract_match_fields(
     matches: list[dict],
-) -> tuple[set[str], set[str], list[str], list[str], list[str], list[str]]:
+) -> tuple[
+    set[str],
+    set[str],
+    list[str],
+    list[str],
+    list[str],
+    list[str],
+    set[str],
+    set[str],
+]:
     servers: set[str] = set()
     services: set[str] = set()
     messages: list[str] = []
     statuses: list[str] = []
     user_agents: list[str] = []
     paths: list[str] = []
+    containers: set[str] = set()
+    container_ids: set[str] = set()
 
     for match in matches:
         data = match.get("data", match)
@@ -423,7 +436,21 @@ def _extract_match_fields(
                 paths.append(str(value))
                 break
 
-    return servers, services, messages, statuses, user_agents, paths
+        if container := data.get("container_name"):
+            containers.add(str(container))
+        if container_id := data.get("container_id"):
+            container_ids.add(str(container_id))
+
+    return (
+        servers,
+        services,
+        messages,
+        statuses,
+        user_agents,
+        paths,
+        containers,
+        container_ids,
+    )
 
 
 def _format_host_service(servers: set[str], services: set[str]) -> tuple[str, str, str]:
@@ -706,8 +733,9 @@ async def _query_axiom_rows(
         'or message contains "CRITICAL"'
     )
     apl_parts.append(
-        "| project _time, host, service, message, msg, log, _raw, "
-        "status, status_code, code, user_agent, path, url, request_path, requestPath"
+        "| project _time, host, service, container_name, container_id, "
+        "message, msg, log, _raw, status, status_code, code, user_agent, "
+        "path, url, request_path, requestPath"
     )
     apl_parts.append("| limit 50")
     apl = " ".join(apl_parts)
@@ -736,13 +764,24 @@ async def _query_axiom_rows(
 
 def _extract_fields_from_rows(
     rows: list[dict[str, Any]],
-) -> tuple[set[str], set[str], list[str], list[str], list[str], list[str]]:
+) -> tuple[
+    set[str],
+    set[str],
+    list[str],
+    list[str],
+    list[str],
+    list[str],
+    set[str],
+    set[str],
+]:
     servers: set[str] = set()
     services: set[str] = set()
     messages: list[str] = []
     statuses: list[str] = []
     user_agents: list[str] = []
     paths: list[str] = []
+    containers: set[str] = set()
+    container_ids: set[str] = set()
 
     for row in rows:
         if host := row.get("host"):
@@ -774,7 +813,21 @@ def _extract_fields_from_rows(
                 paths.append(str(value))
                 break
 
-    return servers, services, messages, statuses, user_agents, paths
+        if container := row.get("container_name"):
+            containers.add(str(container))
+        if container_id := row.get("container_id"):
+            container_ids.add(str(container_id))
+
+    return (
+        servers,
+        services,
+        messages,
+        statuses,
+        user_agents,
+        paths,
+        containers,
+        container_ids,
+    )
 
 
 def _match_route(
@@ -1273,6 +1326,8 @@ async def axiom_webhook(request: Request):
         statuses,
         user_agents,
         paths,
+        containers,
+        container_ids,
     ) = _extract_match_fields(matches)
     service_hint = _guess_service_from_monitor(route_monitor) or (
         sorted(services)[0] if services else ""
@@ -1324,9 +1379,13 @@ async def axiom_webhook(request: Request):
                 row_statuses,
                 row_user_agents,
                 row_paths,
+                row_containers,
+                row_container_ids,
             ) = _extract_fields_from_rows(filtered_rows)
             servers |= row_servers
             services |= row_services
+            containers |= row_containers
+            container_ids |= row_container_ids
             if not messages:
                 messages = row_messages
                 statuses = row_statuses
@@ -1358,6 +1417,7 @@ async def axiom_webhook(request: Request):
     top_path = _most_common(paths) or ""
 
     host_value, service_value, host_service = _format_host_service(servers, services)
+    container_value = sorted(containers)[0] if containers else (service_value or "")
     context = {
         "title": route_monitor,
         "message": top_error or "",
@@ -1366,6 +1426,7 @@ async def axiom_webhook(request: Request):
         "path": top_path,
         "host": host_value,
         "service": service_value,
+        "container": container_value,
     }
     if _should_drop(context):
         logger.info("Axiom alert dropped by filter: %r", route_monitor)
@@ -1379,6 +1440,7 @@ async def axiom_webhook(request: Request):
         _resolve_runbook(services, profile_names),
         host_value,
         service_value,
+        container_value,
         route_monitor,
     )
 

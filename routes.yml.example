@@ -42,10 +42,11 @@ defaults:
   include_resolved: false          # слать resolved? обычно нет
   sample_count: 2                  # сколько sample-строк
   top_error: true                  # включать top error
-  # Разрешенные плейсхолдеры: {host}, {service}, {monitor}
+  # Разрешенные плейсхолдеры: {host}, {service}, {container}, {monitor}
   runbook:
     - "Зайди по SSH на {host}"
-    - "Найди контейнер и посмотри логи: docker ps --format '{{.Names}}' | grep {service}; docker logs <container> --tail 200"
+    - "Найди контейнер: docker ps --format '{{.Names}}' | grep {service}"
+    - "Логи контейнера: docker logs {container} --tail 200"
 
 # Шум режем полностью, ничего не отправляем
 # Поддерживаемые поля: title, message, status, user_agent, path, host, service

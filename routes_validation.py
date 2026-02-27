@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 from jsonschema import Draft202012Validator
 
-ALLOWED_PLACEHOLDERS = {"host", "service", "monitor"}
+ALLOWED_PLACEHOLDERS = {"host", "service", "container", "monitor"}
 LIST_OPS = {"contains_any", "in", "prefix_in"}
 
 
