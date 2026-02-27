@@ -447,6 +447,7 @@ _REDACT_PATTERNS = [
     (re.compile(r"bot\d{6,}:[A-Za-z0-9_-]{20,}"), "bot<redacted>"),
     (re.compile(r"(Bearer\s+)[A-Za-z0-9._-]+"), r"\1<redacted>"),
 ]
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
 def _redact(text: str) -> str:
@@ -459,7 +460,8 @@ def _redact(text: str) -> str:
 
 
 def _sanitize_line(text: str, limit: int = 200) -> str:
-    return html.escape(_truncate(_redact(text), limit), quote=False)
+    cleaned = _ANSI_ESCAPE_RE.sub("", text)
+    return html.escape(_truncate(_redact(cleaned), limit), quote=False)
 
 
 def _parse_time(value: str) -> datetime | None:
@@ -540,7 +542,7 @@ async def _query_axiom_rows(
 
     start_time, end_time = _resolve_time_range(ts_start, ts_end)
     service_value = service.replace('"', '\\"')
-    apl_parts = [f"['{dataset}']", f'| where service contains "{service_value}"']
+    apl_parts = [f'| where service contains "{service_value}"']
     if host:
         host_value = host.replace('"', '\\"')
         apl_parts.append(f'| where host == "{host_value}"')
