@@ -54,15 +54,14 @@ docker compose up -d
 docker compose --profile alertbot up -d
 ```
 
-Нужен reverse proxy (nginx или Caddy) для публичного URL вебхука — см. [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md).
+Нужен reverse proxy (nginx или Caddy) для публичного URL вебхука — см. [docs/ALERTING.md](docs/ALERTING.md).
 
 ## Документация
 
-- [docs/FOR-DEVELOPERS.md](docs/FOR-DEVELOPERS.md) — **для разработчиков сервисов**: как интегрироваться с мониторингом
-- [docs/LOG-SHIPPER.md](docs/LOG-SHIPPER.md) — как устроен axiom-log-shipper, рекомендации по логированию в приложениях
-- [docs/MONITORING-MANAGEMENT.md](docs/MONITORING-MANAGEMENT.md) — APL-запросы, мониторы, CLI (`axiom_cli.py`), MCP
-- [docs/TELEGRAM-BOT.md](docs/TELEGRAM-BOT.md) — настройка axiom-to-telegram-bot, Telegram, маршрутизация по топикам
-- [docs/SELF-MONITORING.md](docs/SELF-MONITORING.md) — как стек мониторит сам себя без петель
+- [docs/SETUP.md](docs/SETUP.md) — сценарии установки и подключения
+- [docs/INTEGRATION.md](docs/INTEGRATION.md) — интеграция сервиса, healthcheck, логирование, Vector
+- [docs/AXIOM.md](docs/AXIOM.md) — APL-запросы, мониторы, CLI (`axiom_cli.py`), MCP
+- [docs/ALERTING.md](docs/ALERTING.md) — alertbot, маршрутизация, self-monitoring, лучшие практики алертов
 
 ## Управление
 

@@ -79,7 +79,7 @@ python3 axiom_cli.py notifiers create <name> <webhook-url>
 python3 axiom_cli.py notifiers delete <id>
 ```
 
-См. `docs/ALERTING-BEST-PRACTICES.md` — формат вебхука и рекомендации по содержанию алертов.
+См. `docs/ALERTING.md` (раздел "Лучшие практики по алертам Axiom") — формат вебхука и рекомендации по содержанию алертов.
 
 **Обязательная привязка notifier:** Axiom позволяет создать монитор без notifier —
 в таком случае алерты не уходят. Регламент: создавать мониторы через
