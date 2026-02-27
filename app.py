@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     axiom_attach_interval_seconds: int = 300
     alertbot_include_resolved: bool = False
     axiom_dataset: str = ""
+    axiom_query_base: str = "https://cloud.axiom.co"
 
     model_config = {"env_file": ".env"}
 
@@ -51,6 +52,7 @@ class Settings(BaseSettings):
 settings = Settings()
 TELEGRAM_API = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
 AXIOM_API_BASE = settings.axiom_api_base.rstrip("/")
+AXIOM_QUERY_BASE = settings.axiom_query_base.rstrip("/")
 
 
 # ── Axiom notifier sync ───────────────────────────────────────────────────────
@@ -513,7 +515,7 @@ async def _query_axiom_rows(
     apl = " ".join(apl_parts)
 
     headers = _axiom_headers()
-    url = f"{AXIOM_API_BASE}/v1/query/_apl?format=tabular"
+    url = f"{AXIOM_QUERY_BASE}/v1/query/_apl?format=tabular"
     payload = {"apl": apl, "startTime": start_time, "endTime": end_time}
     async with httpx.AsyncClient() as client:
         try:
@@ -926,17 +928,17 @@ def format_axiom_alert(
             lines.append(f"🖥 Server: {', '.join(sorted(servers))}")
         if services:
             lines.append(f"⚙️ Service: {', '.join(sorted(services))}")
-    lines.append(f"📊 Events: <b>{display_count}</b>")
+    lines.append(f"📊 Событий: <b>{display_count}</b>")
     if ts_start and ts_end:
         lines.append(f"🕐 {_fmt_dt(ts_start)} → {_fmt_dt(ts_end)}")
     if top_error:
-        lines.append(f"🧾 Top error: <code>{_truncate(top_error, 200)}</code>")
+        lines.append(f"🧾 Топ-ошибка: <code>{_truncate(top_error, 200)}</code>")
     if sample_messages:
-        lines.append("🧾 Sample:")
+        lines.append("🧾 Примеры:")
         for m in sample_messages:
             lines.append(f"<code>{_truncate(m, 200)}</code>")
     if runbook:
-        lines.append("What to do:")
+        lines.append("Что делать:")
         for step in runbook:
             lines.append(f"- {step}")
 

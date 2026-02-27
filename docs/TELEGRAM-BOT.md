@@ -41,6 +41,7 @@ WEBHOOK_SECRET=         # опционально: Axiom передаёт в за
 # Авто-привязка notifiers к мониторам (Axiom)
 AXIOM_MGMT_TOKEN=       # PAT, права: Monitors/Notifiers CRU, Datasets/Queries R
 AXIOM_ATTACH_INTERVAL_SECONDS=300  # опционально, по умолчанию 300
+AXIOM_QUERY_BASE=https://cloud.axiom.co  # база для Axiom-запросов (enrichment)
 
 # Фильтрация шума
 ALERTBOT_INCLUDE_RESOLVED=false  # отправлять resolved-события (по умолчанию нет)

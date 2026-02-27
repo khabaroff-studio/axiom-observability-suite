@@ -14,8 +14,8 @@ topics:
   project-a: 123
   project-b: 456
 
-# Маршрутизация по метаданным (substring match, регистр не важен)
-# match keys: service (контейнер), host (сервер), monitor (название монитора)
+# Маршрутизация по метаданным (совпадение по подстроке, регистр не важен)
+# Поля match: service (контейнер), host (сервер), monitor (название монитора)
 # Первое совпадение выигрывает.
 routes:
   - match: { service: "my-service" }
