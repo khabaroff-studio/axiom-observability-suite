@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Alertbot routes config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "groups",
+    "topics",
+    "routes",
+    "default_group",
+    "default_topic",
+    "tags",
+    "defaults",
+    "drop",
+    "profiles",
+    "services"
+  ],
+  "$defs": {
+    "routeMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "service": {"type": "string"},
+        "host": {"type": "string"},
+        "monitor": {"type": "string"}
+      }
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "op", "value"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": ["title", "message", "status", "user_agent", "path", "host", "service"]
+        },
+        "op": {
+          "type": "string",
+          "enum": ["contains", "contains_any", "regex", "in", "prefix_in", "eq"]
+        },
+        "value": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "integer"},
+            {"type": "array", "items": {"type": ["string", "integer"]}}
+          ]
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["match"],
+      "properties": {
+        "match": {"$ref": "#/$defs/match"}
+      }
+    }
+  },
+  "properties": {
+    "groups": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": ["integer", "string"]}
+    },
+    "topics": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": ["integer", "string", "null"]}
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["match", "group", "topic"],
+        "properties": {
+          "match": {"$ref": "#/$defs/routeMatch"},
+          "group": {"type": "string"},
+          "topic": {"type": "string"}
+        }
+      }
+    },
+    "default_group": {"type": "string"},
+    "default_topic": {"type": "string"},
+    "tags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_impact", "service_errors"],
+      "properties": {
+        "user_impact": {"type": "string"},
+        "service_errors": {"type": "string"}
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["include_resolved", "sample_count", "top_error", "runbook"],
+      "properties": {
+        "include_resolved": {"type": "boolean"},
+        "sample_count": {"type": "integer", "minimum": 1},
+        "top_error": {"type": "boolean"},
+        "runbook": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "drop": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/rule"}
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["p1"],
+        "properties": {
+          "p1": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/rule"}
+          },
+          "runbook": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["profiles"],
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+          },
+          "runbook": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

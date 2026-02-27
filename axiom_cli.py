@@ -130,7 +130,7 @@ def create_monitor(
             "threshold": threshold,
             "operator": "AboveOrEqual",
             "alertOnNoData": False,
-            "notifiers": [notifier_id],
+            "notifierIds": [notifier_id],
             "notifyByGroup": False,
             "disabledUntil": "0001-01-01T00:00:00Z",
         },
@@ -159,7 +159,7 @@ def create_health_watcher_monitor(notifier_id: str, interval_minutes: int = 5) -
             "threshold": 1,
             "operator": "AboveOrEqual",
             "alertOnNoData": False,
-            "notifiers": [notifier_id],
+            "notifierIds": [notifier_id],
             "notifyByGroup": False,
             "disabledUntil": "0001-01-01T00:00:00Z",
         },
@@ -173,6 +173,45 @@ def delete_monitor(monitor_id: str):
     print(f"Deleted monitor: {monitor_id}")
 
 
+def attach_notifiers_to_monitors():
+    notifiers = api("GET", "/v2/notifiers") or []
+    if not notifiers:
+        print("No notifiers found. Create one first:", file=sys.stderr)
+        print(
+            "  axiom_cli.py notifiers create alertbot-telegram <url>",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    notifier_id = notifiers[0]["id"]
+    notifier_name = notifiers[0].get("name", "")
+    print(f"Using notifier: {notifier_id}  {notifier_name}")
+
+    monitors = api("GET", "/v2/monitors") or []
+    if not monitors:
+        print("No monitors found.")
+        return
+
+    updated = 0
+    for monitor in monitors:
+        if monitor.get("notifierIds"):
+            continue
+        monitor_id = monitor["id"]
+        detail = api("GET", f"/v2/monitors/{monitor_id}") or {}
+        payload = {
+            key: value
+            for key, value in detail.items()
+            if key not in {"id", "createdAt"}
+        }
+        payload["notifierIds"] = [notifier_id]
+        api("PUT", f"/v2/monitors/{monitor_id}", payload)
+        updated += 1
+        print(f"Attached notifier: {monitor_id}  {monitor.get('name')}")
+
+    if updated == 0:
+        print("All monitors already have notifiers.")
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 USAGE = """
@@ -184,12 +223,14 @@ Usage:
   axiom_cli.py monitors list
   axiom_cli.py monitors create <service> [--interval N] [--threshold N]
   axiom_cli.py monitors create-health-watcher [--interval N]
+  axiom_cli.py monitors attach-notifiers
   axiom_cli.py monitors delete <id>
 
 Examples:
   axiom_cli.py monitors create my-service
   axiom_cli.py monitors create my-api --interval 10 --threshold 1
   axiom_cli.py monitors create-health-watcher
+  axiom_cli.py monitors attach-notifiers
   axiom_cli.py monitors list
 """
 
@@ -276,6 +317,9 @@ def main():
             notifier_id = notifiers[0]["id"]
             print(f"Using notifier: {notifier_id}  {notifiers[0]['name']}")
             create_health_watcher_monitor(notifier_id, interval)
+
+        elif cmd == "attach-notifiers":
+            attach_notifiers_to_monitors()
 
         elif cmd == "delete" and rest:
             delete_monitor(rest[0])

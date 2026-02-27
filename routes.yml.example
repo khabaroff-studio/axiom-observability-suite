@@ -1,18 +1,23 @@
-# Telegram routing rules for alertbot.
-# Copy to routes.yml and fill in real IDs.
-# Without routes.yml, alertbot falls back to TELEGRAM_CHAT_ID / TELEGRAM_TOPIC_ID env vars.
+# routes.yml — маршрутизация и правила алертов alertbot
+# Скопируй в routes.yml и подставь реальные ID.
+# Файл самодокументируемый, все правила рядом.
 
+# --- Маршрутизация Telegram ---
+
+# Telegram-группы (ID начинаются с -100)
 groups:
-  my-group: -100XXXXXXXXXX       # Telegram supergroup ID (with -100 prefix)
+  my-group: -100XXXXXXXXXX
 
+# Telegram-топики (null/пусто = общий топик, без thread_id)
 topics:
-  general:                         # null = General topic (no thread_id sent)
-  project-a: 123                  # Topic for project A
-  project-b: 456                  # Topic for project B
+  general:                        # null = общий топик (без thread_id)
+  project-a: 123
+  project-b: 456
 
+# Маршрутизация по метаданным (substring match, регистр не важен)
+# match keys: service (контейнер), host (сервер), monitor (название монитора)
+# Первое совпадение выигрывает.
 routes:
-  # Substring match on: service (container name), host (server), monitor (Axiom monitor name).
-  # First matching route wins.
   - match: { service: "my-service" }
     group: my-group
     topic: project-a
@@ -21,5 +26,54 @@ routes:
     group: my-group
     topic: project-b
 
+# Дефолтный роут, если ничего не совпало
 default_group: my-group
 default_topic: general
+
+# --- Формат и фильтры алертов ---
+
+# Теги для двух уровней важности
+tags:
+  user_impact: "#user-impact"      # P1, влияет на пользователей
+  service_errors: "#service-errors" # P2, ошибки сервиса
+
+# Дефолтный формат сообщения
+defaults:
+  include_resolved: false          # слать resolved? обычно нет
+  sample_count: 2                  # сколько sample-строк
+  top_error: true                  # включать top error
+  # Разрешенные плейсхолдеры: {host}, {service}, {monitor}
+  runbook:
+    - "Зайди по SSH на {host}"
+    - "Проверь логи контейнера {service}: docker logs {service} --tail 200"
+
+# Шум режем полностью, ничего не отправляем
+# Поддерживаемые поля: title, message, status, user_agent, path, host, service
+# Поддерживаемые op: contains, contains_any, regex, in, prefix_in, eq
+drop:
+  - match: { field: message, op: contains, value: "DisallowedHost" }
+  - match: { field: message, op: contains, value: "Invalid HTTP_HOST header" }
+  - match: { field: message, op: contains, value: "SecurityWarning" }
+  - match: { field: status, op: in, value: [403, 404, 499] }
+  - match: { field: user_agent, op: regex, value: "(?i)bot|crawler|scanner" }
+  - match: { field: path, op: prefix_in, value: ["/health", "/robots.txt", "/favicon.ico"] }
+
+# Профили определяют P1-правила (user-impact)
+# У сервиса может быть несколько профилей.
+profiles:
+  http:
+    # HTTP-фронтенды: P1, если unhealthy или 5xx
+    p1:
+      - match: { field: title, op: contains_any, value: ["unhealthy", "5xx"] }
+  bot:
+    # Боты: P1, если unhealthy или ключевые слова в ошибке
+    p1:
+      - match: { field: title, op: contains, value: "unhealthy" }
+      - match: { field: message, op: contains_any, value: ["Traceback", "Exception", "CRITICAL"] }
+
+# Явное назначение профилей сервисам (можно несколько)
+services:
+  my-service:
+    profiles: [http]
+  my-bot:
+    profiles: [bot]

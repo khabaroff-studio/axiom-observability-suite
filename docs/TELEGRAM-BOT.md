@@ -38,7 +38,14 @@ health-watcher  → POST /alert/local    ─┘
 TELEGRAM_BOT_TOKEN=     # токен бота от @BotFather
 WEBHOOK_SECRET=         # опционально: Axiom передаёт в заголовке X-Webhook-Secret
 
-# Fallback (используется если нет routes.yml, а также health-watcher.sh):
+# Авто-привязка notifiers к мониторам (Axiom)
+AXIOM_MGMT_TOKEN=       # PAT, права: Monitors/Notifiers CRU, Datasets/Queries R
+AXIOM_ATTACH_INTERVAL_SECONDS=300  # опционально, по умолчанию 300
+
+# Фильтрация шума
+ALERTBOT_INCLUDE_RESOLVED=false  # отправлять resolved-события (по умолчанию нет)
+
+# Резерв (если нет routes.yml, а также для health-watcher.sh):
 # TELEGRAM_CHAT_ID=
 # TELEGRAM_TOPIC_ID=
 ```
@@ -51,6 +58,10 @@ WEBHOOK_SECRET=         # опционально: Axiom передаёт в за
 `https://t.me/c/3779402801/97/165` → topic_id = `97`, chat_id = `-1003779402801`.
 
 Без `routes.yml` бот fallback'ится на `TELEGRAM_CHAT_ID` / `TELEGRAM_TOPIC_ID` из `.env`.
+
+Если задан `AXIOM_MGMT_TOKEN`, alertbot раз в 5 минут проверяет мониторы в Axiom
+и автоматически привязывает webhook notifier к тем, где он отсутствует.
+По умолчанию alertbot не отправляет закрывающие (resolved) сообщения, чтобы не шуметь.
 
 ## Эндпоинты
 

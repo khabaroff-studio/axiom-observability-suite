@@ -8,7 +8,7 @@ on:
       - "docs/**"
       - "LICENSE"
       - ".gitignore"
-      - "routes.yml.example"
+      # routes.yml.example is validated in CI
       - ".env.example"
   pull_request:
     branches: [main]
@@ -17,7 +17,7 @@ on:
       - "docs/**"
       - "LICENSE"
       - ".gitignore"
-      - "routes.yml.example"
+      # routes.yml.example is validated in CI
       - ".env.example"
 
 jobs:
@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python routes_validation.py --file routes.yml.example
       - run: pip install ruff
       - run: ruff check app.py axiom_cli.py
       - run: ruff format app.py axiom_cli.py --check

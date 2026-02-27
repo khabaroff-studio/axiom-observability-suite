@@ -68,6 +68,7 @@ python3 axiom_cli.py <команда>
 python3 axiom_cli.py monitors list
 python3 axiom_cli.py monitors create <service>                          # порог: 1 ошибка / 5 мин
 python3 axiom_cli.py monitors create <service> --interval 10 --threshold 3
+python3 axiom_cli.py monitors attach-notifiers
 python3 axiom_cli.py monitors delete <id>
 ```
 
@@ -77,6 +78,16 @@ python3 axiom_cli.py notifiers list
 python3 axiom_cli.py notifiers create <name> <webhook-url>
 python3 axiom_cli.py notifiers delete <id>
 ```
+
+См. `docs/ALERTING-BEST-PRACTICES.md` — формат вебхука и рекомендации по содержанию алертов.
+
+**Обязательная привязка notifier:** Axiom позволяет создать монитор без notifier —
+в таком случае алерты не уходят. Регламент: создавать мониторы через
+`axiom_cli.py`. После любых изменений мониторов или деплоя безусловно запускать
+`python3 axiom_cli.py monitors attach-notifiers` — команда проставляет notifier
+всем мониторам, где он отсутствует. Если notifiers пустые — привяжи notifier в UI
+или пересоздай монитор через CLI.
+Если alertbot запущен с `AXIOM_MGMT_TOKEN`, он выполняет auto-attach каждые 5 минут.
 
 **Дедупликация:** монитор срабатывает максимум раз в `intervalMinutes`.
 1000 одинаковых ошибок за 5 минут → один алерт.
@@ -101,5 +112,6 @@ python3 axiom_cli.py notifiers delete <id>
 После деплоя проверь текущие ресурсы:
 ```bash
 python3 axiom_cli.py notifiers list
+python3 axiom_cli.py monitors attach-notifiers
 python3 axiom_cli.py monitors list
 ```
