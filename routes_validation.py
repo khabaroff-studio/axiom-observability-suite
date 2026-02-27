@@ -104,16 +104,6 @@ def _validate_references(config: dict[str, Any]) -> list[str]:
 
 def _validate_list_ops(config: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    for section in ("drop",):
-        for rule in config.get(section, []) or []:
-            if not isinstance(rule, dict):
-                continue
-            match = rule.get("match", {})
-            op = match.get("op") if isinstance(match, dict) else None
-            value = match.get("value") if isinstance(match, dict) else None
-            if op in LIST_OPS and not isinstance(value, list):
-                errors.append(f"Rule op '{op}' requires list value: {match}")
-
     profiles = config.get("profiles", {})
     if isinstance(profiles, dict):
         for profile in profiles.values():

@@ -48,16 +48,7 @@ defaults:
     - "Найди контейнер: docker ps --format '{{.Names}}' | grep {service}"
     - "Логи контейнера: docker logs {container} --tail 200"
 
-# Шум режем полностью, ничего не отправляем
-# Поддерживаемые поля: title, message, status, user_agent, path, host, service
-# Поддерживаемые op: contains, contains_any, regex, in, prefix_in, eq
-drop:
-  - match: { field: message, op: contains, value: "DisallowedHost" }
-  - match: { field: message, op: contains, value: "Invalid HTTP_HOST header" }
-  - match: { field: message, op: contains, value: "SecurityWarning" }
-  - match: { field: status, op: in, value: [403, 404, 499] }
-  - match: { field: user_agent, op: regex, value: "(?i)bot|crawler|scanner" }
-  - match: { field: path, op: prefix_in, value: ["/health", "/robots.txt", "/favicon.ico"] }
+# Фильтрация шума вынесена в Axiom и в alertbot (код)
 
 # Профили определяют P1-правила (user-impact)
 # У сервиса может быть несколько профилей.

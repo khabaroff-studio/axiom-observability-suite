@@ -178,11 +178,6 @@ def _config_tags() -> dict[str, str]:
     }
 
 
-def _config_drop_rules() -> list[dict]:
-    drop_rules = _config_section("drop", [])
-    return drop_rules if isinstance(drop_rules, list) else []
-
-
 def _config_profiles() -> dict[str, Any]:
     profiles = _config_section("profiles", {})
     return profiles if isinstance(profiles, dict) else {}
@@ -288,13 +283,6 @@ def _match_rule(rule: dict, context: dict[str, Any]) -> bool:
     if op == "eq":
         needle = expected_values[0] if expected_values else ""
         return any(actual == needle for actual in actual_values)
-    return False
-
-
-def _should_drop(context: dict[str, Any]) -> bool:
-    for rule in _config_drop_rules():
-        if isinstance(rule, dict) and _match_rule(rule, context):
-            return True
     return False
 
 
@@ -1428,10 +1416,6 @@ async def axiom_webhook(request: Request):
         "service": service_value,
         "container": container_value,
     }
-    if _should_drop(context):
-        logger.info("Axiom alert dropped by filter: %r", route_monitor)
-        return {"ok": True}
-
     profile_names = _get_service_profiles(services)
     is_p1 = _is_p1(profile_names, context)
     tags = _config_tags()
